@@ -13,6 +13,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	forwardedHeader  = "X-Forwarded-Proto"
+	httpsPort        = "443"
+	httpSecureSchema = "https"
+	nonSecureSchema  = "ws"
+	secureSchema     = "wss"
+)
+
 func serveHome(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.Error(w, "Not found", 404)
@@ -32,10 +40,15 @@ func serveMain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	schema := nonSecureSchema
+	if r.Header.Get(forwardedHeader) == httpSecureSchema {
+		schema = secureSchema
+	}
+
 	params := r.URL.Query()
 	vars := mux.Vars(r)
 	if len(params) == 0 {
-		homeTemplate.Execute(w, "ws://"+r.Host+"/server/"+vars["path"])
+		homeTemplate.Execute(w, schema + "://"+r.Host+"/server/"+vars["path"])
 		return
 	}
 
@@ -49,7 +62,10 @@ func serveNew(w http.ResponseWriter, r *http.Request) {
 }
 
 func broadcastMessage(r *http.Request, message, path string) {
-	u := url.URL{Scheme: "ws", Host: os.Getenv("HOST") + ":" + os.Getenv("PORT"), Path: path}
+	u := url.URL{Scheme: nonSecureSchema, Host: os.Getenv("HOST") + ":" + os.Getenv("PORT"), Path: path}
+	if r.Header.Get(forwardedHeader) == httpSecureSchema {
+		u = url.URL{Scheme: secureSchema, Host: os.Getenv("SECURE_HOST") + ":" + httpsPort, Path: path}
+	}
 	log.Println("connecting to ", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -92,11 +108,11 @@ var homeTemplate = template.Must(template.New("").Parse(`
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-	<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
-	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.1/moment.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.13.1/build/styles/atom-one-dark.min.css">
-    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.13.1/build/highlight.min.js"></script>
+	<link rel="stylesheet" href="//stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+	<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
+	<script src="//cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.1/moment.min.js"></script>
+    <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.13.1/build/styles/atom-one-dark.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.13.1/build/highlight.min.js"></script>
 
 	<title>Webhookr.go</title>
 
