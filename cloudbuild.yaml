@@ -1,0 +1,27 @@
+steps:
+- name: gcr.io/cloud-builders/go
+  id: go-build
+  args: ['build', '-a', '-o', 'service', '.']
+  env: ['PROJECT_ROOT=github.com/macuenca/webhookr-go', 'CGO_ENABLED=0', 'GOOS=linux']
+
+- name: gcr.io/cloud-builders/docker
+  id: docker-build
+  args: ['build', '-t', 'us.gcr.io/$PROJECT_ID/webhookr-go-$BRANCH_NAME:$SHORT_SHA', '.']
+  env: ['PROJECT_ROOT=github.com/macuenca/webhookr-go']
+
+- name: gcr.io/cloud-builders/docker
+  id: docker-push
+  args: ['push', 'us.gcr.io/$PROJECT_ID/webhookr-go-$BRANCH_NAME:$SHORT_SHA']
+
+- name: gcr.io/cloud-builders/gcloud
+  id: gcloud-update-container
+  args: [
+    'compute',
+    'instances',
+    'update-container',
+    'webhookr-go',
+    '--zone',
+    'us-east1-c',
+    '--container-image',
+    'us.gcr.io/$PROJECT_ID/webhookr-go-$BRANCH_NAME:$SHORT_SHA'
+  ]
