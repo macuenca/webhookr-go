@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -45,14 +47,37 @@ func serveMain(w http.ResponseWriter, r *http.Request) {
 		schema = secureSchema
 	}
 
-	params := r.URL.Query()
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Unable to decode request body")
+		return
+	}
+
 	vars := mux.Vars(r)
-	if len(params) == 0 {
+
+	// Check for JSON in the request body if not empty
+	var postPayload string
+	if len(body) > 0 {
+		var data interface{}
+		err = json.Unmarshal(body, &data)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, "Unable to parse valid JSON")
+			return
+		}
+
+		postPayload = string(body)
+	}
+
+	params := r.URL.Query()
+	if len(params) == 0 && len(postPayload) == 0 {
 		homeTemplate.Execute(w, schema + "://"+r.Host+"/server/"+vars["path"])
 		return
 	}
 
-	message := fmt.Sprintf(`{"method":"%s","headers":%s,"payload":%s}`, r.Method, toJSON(r.Header), toJSON(params))
+	getPayload := toJSON(params)
+	message := fmt.Sprintf(`{"method":"%s","headers":%s,"get":%s,"post":%s}`, r.Method, toJSON(r.Header), getPayload, postPayload)
 	broadcastMessage(r, message, "/server/"+vars["path"])
 }
 
@@ -163,7 +188,7 @@ var homeTemplate = template.Must(template.New("").Parse(`
 					var json = JSON.parse(evt.data)
 					var item = document.createElement("div");
 					item.className = "card mb-3"
-					item.innerHTML = getHtmlBlock(json.method, json.headers, json.payload)
+					item.innerHTML = getHtmlBlock(json.method, json.headers, json.get, json.post)
 					appendLog(item);
 				};
 			} else {
@@ -173,10 +198,10 @@ var homeTemplate = template.Must(template.New("").Parse(`
 			}
 		};
 
-		function getHtmlBlock(method, headers, payload) {
+		function getHtmlBlock(method, headers, getPayload, postPayload) {
 			var time = moment().format()
 			var html = {
-				msgTemplate: [
+				headTemplate: [
 						'<div class="card-header">',
 							'<button type="button" class="btn btn-success float-left">' + method + '</button><span>&nbsp;</span>',
 							'<button type="button" class="btn btn-outline-primary float-cent">' + time + '</button>',
@@ -192,16 +217,39 @@ var homeTemplate = template.Must(template.New("").Parse(`
 									'<code class="json">' + JSON.stringify(headers, undefined, 2) + '</code>',
 								'</pre>',
 							'</div>',
-							'<div class="alert alert-dark" role="alert" id="payload">',
+				].join(""),
+				getTemplate: [
+							'<div class="alert alert-dark" role="alert" id="getPayload">',
 								'<pre>',
-									'<code class="json">' + JSON.stringify(payload, undefined, 2) + '</code>',
+									'<code class="json">' + JSON.stringify(getPayload, undefined, 2) + '</code>',
 								'</pre>',
 							'</div>',
+				].join(""),
+				postTemplate: [
+							'<div class="alert alert-dark" role="alert" id="postPayload">',
+								'<pre>',
+									'<code class="json">' + JSON.stringify(postPayload, undefined, 2) + '</code>',
+								'</pre>',
+							'</div>',
+				].join(""),
+				footTemplate: [
 						'</div>',
 				].join("")
 			}
 
-			return html.msgTemplate
+			var output = html.headTemplate
+
+			if (Object.keys(getPayload).length > 0) {
+				output += html.getTemplate;
+			}
+
+			if (Object.keys(postPayload).length > 0) {
+				output += html.postTemplate;
+			}
+
+			output += html.footTemplate
+
+			return output
 		}
 		</script>
 	</head>
